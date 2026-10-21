@@ -1,0 +1,8 @@
+{
+  "name": "patientinfo-prototyp",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "latest"
+  }
+}

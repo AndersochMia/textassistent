@@ -1,6 +1,10 @@
 # AI-stöd för patientinformation (prototyp)
 
-En statisk HTML-sida (`index.html`) och en Netlify Function (`netlify/functions/analyze.mjs`) som anropar Claude API. API-nyckeln ligger bara på serversidan.
+En statisk HTML-sida (`index.html`) och två Netlify Functions som anropar Claude API. API-nyckeln ligger bara på serversidan.
+
+- `analyze-start.mjs` är en bakgrundsfunktion som kör granskningen (upp till 15 minuter) och sparar resultatet i Netlify Blobs.
+- `status.mjs` låter webbsidan fråga efter resultatet och raderar det när det hämtats.
+- `package.json` behövs för `@netlify/blobs`. Netlify installerar det vid bygget.
 
 ## Publicera på Netlify
 

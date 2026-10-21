@@ -230,6 +230,32 @@
     r.readAsText(f);
   });
 
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  // Startar granskningen på servern och frågar sedan efter resultatet tills det är klart.
+  async function runAnalysis(payload){
+    var id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : (Date.now().toString(16) + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2));
+    var start = await fetch("/api/analyze-start", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(Object.assign({ id:id }, payload))
+    });
+    if(!start.ok){
+      var t = ""; try{ t = (await start.text()).slice(0,150); }catch(e){}
+      throw new Error("Servern svarade " + start.status + (t ? ": " + t : ""));
+    }
+    var t0 = Date.now();
+    while(Date.now() - t0 < 5*60*1000){
+      await sleep(2500);
+      var r = await fetch("/api/status?id=" + encodeURIComponent(id), { cache:"no-store" });
+      var d;
+      try{ d = await r.json(); }catch(e){ throw new Error("Kunde inte läsa svaret från servern (status " + r.status + ")."); }
+      if(d.status === "done") return d.result;
+      if(d.status === "error") throw new Error(d.error || "Okänt fel.");
+    }
+    throw new Error("Granskningen tog för lång tid. Försök igen, gärna med en kortare text.");
+  }
+
   $("run").addEventListener("click", async function(){
     var text = src.value.trim();
     var st = $("status");
@@ -237,12 +263,7 @@
     var btn = $("run"); btn.disabled = true;
     st.innerHTML = '<span class="spinner"></span>AI granskar texten. Det kan ta en halv minut…';
     try{
-      var res = await fetch("/api/analyze", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ text:text, guidelines:kb.guidelines, glossary:kb.glossary, structure:kb.structure, extra:kb.extra })
-      });
-      var data = await res.json().catch(function(){return {error:"Ogiltigt svar från servern."}});
-      if(!res.ok || data.error) throw new Error(data.error || ("Fel " + res.status));
+      var data = await runAnalysis({ text:text, guidelines:kb.guidelines, glossary:kb.glossary, structure:kb.structure, extra:kb.extra });
       state.source = text; state.result = data;
       state.issues = (data.issues||[]).map(function(i){ i.state = "pending"; return i; });
       render();
