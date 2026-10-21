@@ -117,26 +117,38 @@ async function runAnalysis(body) {
     extra: clip(body.extra, 3000),
   });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    signal: AbortSignal.timeout(12 * 60 * 1000),
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 12000,
-      system,
-      tools: [REVIEW_TOOL],
-      tool_choice: { type: "tool", name: "lamna_granskning" },
-      messages: [{ role: "user", content: `<text>\n${text}\n</text>` }],
-    }),
-  });
+  async function attempt(nudge) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: AbortSignal.timeout(12 * 60 * 1000),
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 12000,
+        system,
+        tools: [REVIEW_TOOL],
+        messages: [
+          {
+            role: "user",
+            content:
+              `<text>\n${text}\n</text>` +
+              (nudge ? "\n\nLämna granskningen genom att anropa verktyget lamna_granskning." : ""),
+          },
+        ],
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d?.error?.message || `Fel från Claude API (${res.status}).`);
+    return d;
+  }
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error?.message || `Fel från Claude API (${res.status}).`);
+  let data = await attempt(false);
+  const hasTool = (d) => (d.content || []).some((b) => b.type === "tool_use");
+  if (data.stop_reason !== "max_tokens" && !hasTool(data)) data = await attempt(true);
 
   if (data.stop_reason === "max_tokens") {
     throw new Error("Texten är för lång för att granskas i ett svar. Dela upp den i delar och försök igen.");
