@@ -49,36 +49,51 @@ ${structure || "(inga angivna)"}
 
 ${extra ? "YTTERLIGARE INSTRUKTIONER FRÅN ADMINISTRATÖR\n" + extra + "\n" : ""}
 SVARSFORMAT
-Svara med enbart ett JSON-objekt, utan förklarande text före eller efter och utan kodstaket:
-{
-  "summary": "kort helhetsbedömning, 1-3 meningar",
-  "improved_text": "hela den förbättrade texten",
-  "issues": [
-    {
-      "category": "Klarspråk | Tonalitet och tilltal | Meningsbyggnad | Rubriker och disposition | Terminologi | Motstridig information | Saknad information | Länkar och hänvisningar",
-      "severity": "hög | medel | låg",
-      "original": "exakt textavsnitt ur originalet (ordagrant, så kort som möjligt) eller tom sträng om det gäller texten som helhet",
-      "suggestion": "ersättningstext för just det avsnittet, eller tom sträng om inget direkt ersättningsförslag finns",
-      "explanation": "varför ändringen föreslås"
-    }
-  ],
-  "flags": [ { "text": "avsnitt eller uppgift", "reason": "varför det behöver kontrolleras manuellt" } ],
-  "structure": [ { "heading": "föreslagen rubrik", "covers": "vad avsnittet ska besvara" } ]
-}
-Fältet "original" i issues måste förekomma ordagrant i originaltexten.`;
+Lämna din granskning genom att anropa verktyget "lamna_granskning". Fältet "improved_text" ska innehålla hela den förbättrade texten. Fältet "original" i varje punkt under "issues" måste förekomma ordagrant i originaltexten och vara så kort som möjligt. Lämna "original" och "suggestion" som tomma strängar om punkten gäller texten som helhet eller saknar direkt ersättningsförslag. Kategorier: Klarspråk, Tonalitet och tilltal, Meningsbyggnad, Rubriker och disposition, Terminologi, Motstridig information, Saknad information, Länkar och hänvisningar.`;
 }
 
-function parseModelJson(raw) {
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("Svaret från AI:n kunde inte tolkas.");
-    return JSON.parse(cleaned.slice(start, end + 1));
-  }
-}
+const REVIEW_TOOL = {
+  name: "lamna_granskning",
+  description: "Lämnar in granskningen av patientinformationstexten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", description: "Kort helhetsbedömning, 1-3 meningar." },
+      improved_text: { type: "string", description: "Hela den förbättrade texten." },
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            category: { type: "string" },
+            severity: { type: "string", enum: ["hög", "medel", "låg"] },
+            original: { type: "string" },
+            suggestion: { type: "string" },
+            explanation: { type: "string" },
+          },
+          required: ["category", "severity", "original", "suggestion", "explanation"],
+        },
+      },
+      flags: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { text: { type: "string" }, reason: { type: "string" } },
+          required: ["text", "reason"],
+        },
+      },
+      structure: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { heading: { type: "string" }, covers: { type: "string" } },
+          required: ["heading", "covers"],
+        },
+      },
+    },
+    required: ["summary", "improved_text", "issues", "flags", "structure"],
+  },
+};
 
 async function runAnalysis(body) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -112,8 +127,10 @@ async function runAnalysis(body) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 6000,
+      max_tokens: 12000,
       system,
+      tools: [REVIEW_TOOL],
+      tool_choice: { type: "tool", name: "lamna_granskning" },
       messages: [{ role: "user", content: `<text>\n${text}\n</text>` }],
     }),
   });
@@ -121,8 +138,21 @@ async function runAnalysis(body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error?.message || `Fel från Claude API (${res.status}).`);
 
-  const raw = (data.content || []).map((b) => b.text || "").join("").trim();
-  return parseModelJson(raw);
+  if (data.stop_reason === "max_tokens") {
+    throw new Error("Texten är för lång för att granskas i ett svar. Dela upp den i delar och försök igen.");
+  }
+  const block = (data.content || []).find((b) => b.type === "tool_use");
+  if (!block || !block.input || typeof block.input !== "object") {
+    throw new Error("Svaret från AI:n kunde inte tolkas. Försök igen.");
+  }
+  const r = block.input;
+  return {
+    summary: typeof r.summary === "string" ? r.summary : "",
+    improved_text: typeof r.improved_text === "string" ? r.improved_text : "",
+    issues: Array.isArray(r.issues) ? r.issues : [],
+    flags: Array.isArray(r.flags) ? r.flags : [],
+    structure: Array.isArray(r.structure) ? r.structure : [],
+  };
 }
 
 export default async (req) => {
