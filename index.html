@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patientinformation – AI-stöd (prototyp)</title>
+<style>
+  :root{
+    --bg:#f7f9fb; --surface:#ffffff; --ink:#1b2a38; --muted:#52606d; --line:#d9e1e8;
+    --brand:#1f5f8b; --brand-ink:#ffffff; --ai:#fff6dc; --ai-line:#e3c35f;
+    --ok:#1d6b43; --ok-bg:#e3f4ea; --bad:#8a2b2b; --bad-bg:#fbe9e9; --warn-bg:#fff0d6;
+    --focus:#0b3d91;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--surface);border-bottom:1px solid var(--line)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+  .top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:16px 0}
+  h1{font-size:1.25rem;margin:0}
+  .sub{color:var(--muted);font-size:.9rem;margin:2px 0 0}
+  nav{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px}
+  nav button{background:transparent;border:1px solid transparent;border-radius:8px;padding:9px 14px;font:inherit;color:var(--ink);cursor:pointer}
+  nav button[aria-current="page"]{background:var(--brand);color:var(--brand-ink)}
+  nav button:not([aria-current="page"]):hover{border-color:var(--line);background:var(--bg)}
+  button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+  .banner{background:var(--warn-bg);border-bottom:1px solid #ecd49a;font-size:.9rem;padding:8px 0}
+  main{padding:24px 0 60px}
+  section.view{display:none}
+  section.view.active{display:block}
+  h2{font-size:1.4rem;margin:0 0 6px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+  label{display:block;font-weight:600;margin-bottom:6px}
+  textarea,input[type=text],select{width:100%;font:inherit;color:var(--ink);background:#fff;border:1px solid #9aa8b5;border-radius:8px;padding:10px}
+  textarea{min-height:240px;resize:vertical}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .btn{background:var(--brand);color:var(--brand-ink);border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+  .btn.secondary{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+  .btn.small{padding:6px 12px;font-size:.9rem}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .hint{color:var(--muted);font-size:.9rem}
+  .tag{display:inline-block;font-size:.78rem;font-weight:700;border-radius:999px;padding:2px 10px;background:var(--ai);border:1px solid var(--ai-line)}
+  .tag.ex{background:#e8eefc;border-color:#a9bde8}
+  .status{min-height:1.5em;margin-top:10px}
+  .spinner{display:inline-block;width:16px;height:16px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-3px;margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+  .issue{border:1px solid var(--line);border-left:6px solid var(--ai-line);border-radius:10px;padding:12px 14px;margin:10px 0;background:#fff}
+  .issue.hög{border-left-color:#c0392b}.issue.medel{border-left-color:#e3a21a}.issue.låg{border-left-color:#7a8b99}
+  .issue .cat{font-weight:700}
+  .issue .sev{font-size:.8rem;color:var(--muted);margin-left:8px}
+  .issue q{display:block;background:var(--bad-bg);padding:4px 8px;border-radius:6px;margin:6px 0;quotes:none}
+  .issue .sug{display:block;background:var(--ok-bg);padding:4px 8px;border-radius:6px;margin:6px 0}
+  .issue.accepted{background:var(--ok-bg)} .issue.rejected{background:#f1f3f5;opacity:.85}
+  .flag{background:var(--warn-bg);border:1px solid #ecd49a;border-radius:10px;padding:10px 14px;margin:8px 0}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:800px){.cols{grid-template-columns:1fr}}
+  .pane{white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;min-height:240px}
+  .pane.ai{background:var(--ai);border-color:var(--ai-line)}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+  td input{padding:6px 8px}
+  ol.struct li{margin:6px 0}
+  .sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<a class="sr" href="#main">Hoppa till innehåll</a>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>AI-stöd för patientinformation</h1>
+        <p class="sub">Prototyp för kommunikatörens granskning. Inte en officiell tjänst från Region Västmanland.</p>
+      </div>
+      <label class="row" style="margin:0;font-weight:500"><input type="checkbox" id="adminToggle"> Administratörsläge (demo)</label>
+    </div>
+    <nav aria-label="Huvudnavigering">
+      <button data-view="v1" aria-current="page">1. Bearbeta text</button>
+      <button data-view="v2">2. Granska och förstå</button>
+      <button data-view="v3">3. Förbättra text</button>
+      <button data-view="v4">4. Riktlinjer och ordlista</button>
+    </nav>
+  </div>
+</header>
+<div class="banner"><div class="wrap"><strong>Endast offentlig information och avidentifierade testtexter.</strong> Skriv aldrig in personuppgifter. AI-förslag måste alltid faktagranskas av ansvarig personal.</div></div>
+
+<main id="main"><div class="wrap">
+
+<!-- VY 1 -->
+<section class="view active" id="v1" aria-labelledby="h1">
+  <h2 id="h1">Bearbeta text</h2>
+  <p class="hint">Klistra in en informationstext eller ladda upp en textfil (.txt, .md). Granskningen använder riktlinjer, ordlista och strukturfrågor från vy 4.</p>
+  <div class="card">
+    <label for="srcText">Text att granska</label>
+    <textarea id="srcText" placeholder="Klistra in texten här…"></textarea>
+    <div class="row" style="margin-top:12px">
+      <input type="file" id="srcFile" accept=".txt,.md,text/plain" aria-label="Ladda upp textfil">
+      <button class="btn secondary small" id="loadExample">Använd exempeltext</button>
+      <span class="hint" id="count">0 tecken</span>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="run">Starta AI-granskning</button>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- VY 2 -->
+<section class="view" id="v2" aria-labelledby="h2t">
+  <h2 id="h2t">Granska och förstå</h2>
+  <p class="hint">Här ser du vad AI:n hittat och varför. Allt på den här sidan är <span class="tag">AI-förslag</span> och inte godkänd information.</p>
+  <div id="noResult2" class="card">Ingen granskning ännu. Starta en i vy 1.</div>
+  <div id="result2" hidden>
+    <div class="card"><h3 style="margin-top:0">Helhetsbedömning</h3><p id="summary"></p></div>
+    <div class="card"><h3 style="margin-top:0">Att kontrollera manuellt</h3><div id="flags"></div></div>
+    <div class="card"><h3 style="margin-top:0">Förbättringsområden</h3><div id="issuesRead"></div></div>
+    <div class="card"><h3 style="margin-top:0">Föreslagen struktur</h3><ol class="struct" id="structList"></ol></div>
+  </div>
+</section>
+
+<!-- VY 3 -->
+<section class="view" id="v3" aria-labelledby="h3t">
+  <h2 id="h3t">Förbättra text</h2>
+  <div id="noResult3" class="card">Ingen granskning ännu. Starta en i vy 1.</div>
+  <div id="result3" hidden>
+    <div class="cols">
+      <div><h3>Originaltext</h3><div class="pane" id="origPane"></div></div>
+      <div><h3>Bearbetad text <span class="tag">AI-förslag – redigerbar</span></h3>
+        <label class="sr" for="workText">Bearbetad text</label>
+        <textarea id="workText" style="min-height:240px;background:var(--ai);border-color:var(--ai-line)"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin:14px 0">
+      <button class="btn" id="copyBtn">Kopiera text</button>
+      <button class="btn secondary" id="dlTxt">Ladda ner .txt</button>
+      <button class="btn secondary" id="dlMd">Ladda ner .md</button>
+      <span class="hint" id="copyStatus" role="status" aria-live="polite"></span>
+    </div>
+    <div class="card"><h3 style="margin-top:0">Acceptera eller avvisa enskilda ändringar</h3>
+      <p class="hint">Avvisa återställer originalformuleringen i den bearbetade texten. Acceptera sätter tillbaka förslaget.</p>
+      <div id="issuesAct"></div>
+    </div>
+    <p class="hint">Texten är inte godkänd förrän ansvarig personal faktagranskat den.</p>
+  </div>
+</section>
+
+<!-- VY 4 -->
+<section class="view" id="v4" aria-labelledby="h4t">
+  <h2 id="h4t">Riktlinjer och ordlista</h2>
+  <p class="hint">Allt här är <span class="tag ex">EXEMPELMATERIAL</span> tills Regionens riktiga underlag laddats upp. Ändringar sparas i den här webbläsaren.</p>
+  <div id="adminLock" class="card">Aktivera <strong>administratörsläge</strong> uppe till höger för att redigera. Du kan se innehållet nedan.</div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Språkliga riktlinjer</h3>
+    <label for="guidelines" class="sr">Riktlinjer</label>
+    <textarea id="guidelines"></textarea>
+    <div class="row" style="margin-top:10px"><input type="file" id="guideFile" accept=".txt,.md,text/plain" aria-label="Ladda upp riktlinjer"><span class="hint">Textfil (.txt/.md). Ersätter innehållet ovan.</span></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Ordlista</h3>
+    <table><thead><tr><th>Använd</th><th>I stället för</th><th>Anmärkning</th><th></th></tr></thead><tbody id="glossBody"></tbody></table>
+    <div class="row" style="margin-top:10px"><button class="btn secondary small" id="addGloss">Lägg till rad</button></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Dokumentstruktur – frågor som texten ska besvara</h3>
+    <label for="structure" class="sr">Strukturfrågor</label>
+    <textarea id="structure" style="min-height:140px"></textarea>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Extra instruktioner till AI</h3>
+    <label for="extra" class="sr">Extra instruktioner</label>
+    <textarea id="extra" style="min-height:110px" placeholder="T.ex. 'Använd alltid du-tilltal.'"></textarea>
+  </div>
+  <div class="row"><button class="btn secondary" id="resetKb">Återställ exempelmaterial</button><button class="btn secondary" id="exportKb">Exportera som JSON</button></div>
+</section>
+
+</div></main>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){return document.getElementById(id)};
+  var STORE = "pi-prototyp-kb-v1";
+
+  var EXAMPLE_TEXT = "Inför din operation\n\nDu ska inte äta eller dricka något efter midnatt. Medicin som du tar regelbundet ska du fråga din läkare om, det kan vara så att vissa behöver sättas ut. Ta med dig ID-handling och eventuell medicin. Ankomst sker på avdelning 12 kl 07.00 och där kommer patienten att tas emot av sjuksköterska. Efter ingreppet bör patienten vila och undvika tunga lyft under en tid. Vid frågor kontakta oss.";
+
+  var DEFAULT_KB = {
+    guidelines: "EXEMPEL – ersätts av Regionens riktlinjer.\n- Skriv på klarspråk. Använd vardagliga ord och förklara facktermer.\n- Tilltala läsaren med \"du\".\n- Använd aktiva verb och korta meningar (helst under 20 ord).\n- Låt viktigaste informationen komma först.\n- Använd tydliga rubriker som är formulerade som det läsaren vill veta eller göra.\n- Skriv konkret: ange tid, plats och telefonnummer i stället för \"en tid\" eller \"kontakta oss\".\n- Använd samma ord för samma sak genom hela texten.",
+    glossary: [
+      {preferred:"läkemedel",avoid:"medicin",note:"Exempel"},
+      {preferred:"undersökning",avoid:"provtagning och undersökning (när det avser ett besök)",note:"Exempel"},
+      {preferred:"vårdavdelning",avoid:"avdelning",note:"Exempel"},
+      {preferred:"du",avoid:"patienten",note:"Tilltal, exempel"}
+    ],
+    structure: "1. Vad behöver du veta?\n2. Vad behöver du göra före besöket eller behandlingen?\n3. Vad händer under besöket eller behandlingen?\n4. Vad behöver du göra efteråt?\n5. Hur fungerar uppföljningen och vart vänder du dig med frågor?",
+    extra: ""
+  };
+
+  var kb = load();
+  function load(){
+    try{ var s = localStorage.getItem(STORE); if(s) return Object.assign({}, DEFAULT_KB, JSON.parse(s)); }catch(e){}
+    return JSON.parse(JSON.stringify(DEFAULT_KB));
+  }
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(kb)); }catch(e){} }
+
+  var state = { source:"", result:null, issues:[] };
+
+  // Navigation
+  var navBtns = document.querySelectorAll("nav button");
+  function show(id){
+    document.querySelectorAll("section.view").forEach(function(s){ s.classList.toggle("active", s.id===id); });
+    navBtns.forEach(function(b){ if(b.dataset.view===id) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current"); });
+    window.scrollTo(0,0);
+  }
+  navBtns.forEach(function(b){ b.addEventListener("click", function(){ show(b.dataset.view); }); });
+
+  // Vy 1
+  var src = $("srcText");
+  function updCount(){ $("count").textContent = src.value.length + " tecken"; }
+  src.addEventListener("input", updCount);
+  $("loadExample").addEventListener("click", function(){ src.value = EXAMPLE_TEXT; updCount(); });
+  $("srcFile").addEventListener("change", function(e){
+    var f = e.target.files[0]; if(!f) return;
+    if(f.size > 200000){ $("status").textContent = "Filen är för stor (max 200 kB)."; return; }
+    var r = new FileReader();
+    r.onload = function(){ src.value = String(r.result); updCount(); };
+    r.readAsText(f);
+  });
+
+  $("run").addEventListener("click", async function(){
+    var text = src.value.trim();
+    var st = $("status");
+    if(!text){ st.textContent = "Lägg in en text först."; return; }
+    var btn = $("run"); btn.disabled = true;
+    st.innerHTML = '<span class="spinner"></span>AI granskar texten. Det kan ta en halv minut…';
+    try{
+      var res = await fetch("/api/analyze", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ text:text, guidelines:kb.guidelines, glossary:kb.glossary, structure:kb.structure, extra:kb.extra })
+      });
+      var data = await res.json().catch(function(){return {error:"Ogiltigt svar från servern."}});
+      if(!res.ok || data.error) throw new Error(data.error || ("Fel " + res.status));
+      state.source = text; state.result = data;
+      state.issues = (data.issues||[]).map(function(i){ i.state = "pending"; return i; });
+      render();
+      st.textContent = "Klart. Granskningen visas i vy 2 och 3.";
+      show("v2");
+    }catch(e){
+      st.textContent = "Något gick fel: " + e.message;
+    }finally{ btn.disabled = false; }
+  });
+
+  // Rendering
+  function el(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text!=null) n.textContent = text; return n; }
+
+  function render(){
+    var r = state.result;
+    $("noResult2").hidden = $("noResult3").hidden = true;
+    $("result2").hidden = $("result3").hidden = false;
+    $("summary").textContent = r.summary || "";
+
+    var fl = $("flags"); fl.innerHTML = "";
+    if(!(r.flags||[]).length) fl.appendChild(el("p","hint","Inga uppgifter flaggade."));
+    (r.flags||[]).forEach(function(f){
+      var d = el("div","flag"); d.appendChild(el("strong",null,f.text||"")); d.appendChild(el("div",null,f.reason||"")); fl.appendChild(d);
+    });
+
+    var ir = $("issuesRead"); ir.innerHTML = "";
+    if(!state.issues.length) ir.appendChild(el("p","hint","Inga förbättringsområden hittades."));
+    state.issues.forEach(function(i){ ir.appendChild(issueCard(i,false)); });
+
+    var sl = $("structList"); sl.innerHTML = "";
+    (r.structure||[]).forEach(function(s){
+      var li = el("li"); li.appendChild(el("strong",null,s.heading||"")); li.appendChild(document.createTextNode(" – " + (s.covers||""))); sl.appendChild(li);
+    });
+
+    $("origPane").textContent = state.source;
+    $("workText").value = r.improved_text || "";
+    renderActions();
+  }
+
+  function issueCard(i, actions){
+    var d = el("div","issue " + (i.severity||"") + (actions && i.state!=="pending" ? " "+i.state : ""));
+    var h = el("div"); h.appendChild(el("span","cat",i.category||"Övrigt")); h.appendChild(el("span","sev","Prioritet: "+(i.severity||"–"))); d.appendChild(h);
+    if(i.original){ var q = el("q",null,i.original); d.appendChild(q); }
+    if(i.suggestion){ d.appendChild(el("span","sug","Förslag: "+i.suggestion)); }
+    d.appendChild(el("p",null,i.explanation||""));
+    if(actions && i.original && i.suggestion){
+      var row = el("div","row");
+      var a = el("button","btn small","Acceptera"); a.addEventListener("click", function(){ setIssue(i,"accepted"); });
+      var b = el("button","btn secondary small","Avvisa"); b.addEventListener("click", function(){ setIssue(i,"rejected"); });
+      row.appendChild(a); row.appendChild(b);
+      if(i.state!=="pending") row.appendChild(el("span","hint", i.state==="accepted" ? "Accepterad" : "Avvisad"));
+      d.appendChild(row);
+    }
+    return d;
+  }
+
+  function renderActions(){
+    var c = $("issuesAct"); c.innerHTML = "";
+    var list = state.issues.filter(function(i){ return i.original && i.suggestion; });
+    if(!list.length) c.appendChild(el("p","hint","Det finns inga enskilda ersättningsförslag att ta ställning till."));
+    list.forEach(function(i){ c.appendChild(issueCard(i,true)); });
+  }
+
+  function setIssue(i, to){
+    var w = $("workText"), t = w.value, changed = false;
+    if(to==="rejected" && t.indexOf(i.suggestion)!==-1){ t = t.replace(i.suggestion, i.original); changed = true; }
+    if(to==="accepted" && i.state==="rejected" && t.indexOf(i.original)!==-1){ t = t.replace(i.original, i.suggestion); changed = true; }
+    w.value = t; i.state = to;
+    $("copyStatus").textContent = (!changed && to==="rejected") ? "Förslaget fanns inte ordagrant i texten – redigera manuellt vid behov." : "";
+    renderActions();
+  }
+
+  // Export
+  $("copyBtn").addEventListener("click", function(){
+    var t = $("workText").value;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function(){ $("copyStatus").textContent = "Kopierad."; }, function(){ $("workText").select(); $("copyStatus").textContent = "Markera och kopiera manuellt (Ctrl/Cmd+C)."; });
+  });
+  function download(name, mime){
+    var blob = new Blob([$("workText").value], {type:mime+";charset=utf-8"});
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+  }
+  $("dlTxt").addEventListener("click", function(){ download("bearbetad-text.txt","text/plain"); });
+  $("dlMd").addEventListener("click", function(){ download("bearbetad-text.md","text/markdown"); });
+
+  // Vy 4
+  var admin = $("adminToggle");
+  function fillKb(){
+    $("guidelines").value = kb.guidelines; $("structure").value = kb.structure; $("extra").value = kb.extra;
+    renderGloss();
+  }
+  function renderGloss(){
+    var b = $("glossBody"); b.innerHTML = "";
+    kb.glossary.forEach(function(g, idx){
+      var tr = el("tr");
+      ["preferred","avoid","note"].forEach(function(k){
+        var td = el("td"); var inp = el("input"); inp.type = "text"; inp.value = g[k]||""; inp.setAttribute("aria-label", k);
+        inp.disabled = !admin.checked;
+        inp.addEventListener("input", function(){ g[k] = inp.value; save(); });
+        td.appendChild(inp); tr.appendChild(td);
+      });
+      var td = el("td"); var del = el("button","btn secondary small","Ta bort"); del.disabled = !admin.checked;
+      del.addEventListener("click", function(){ kb.glossary.splice(idx,1); save(); renderGloss(); });
+      td.appendChild(del); tr.appendChild(td); b.appendChild(tr);
+    });
+  }
+  function applyAdmin(){
+    var on = admin.checked;
+    ["guidelines","structure","extra","guideFile","addGloss","resetKb"].forEach(function(id){ $(id).disabled = !on; });
+    $("adminLock").hidden = on;
+    renderGloss();
+  }
+  admin.addEventListener("change", applyAdmin);
+  ["guidelines","structure","extra"].forEach(function(id){ $(id).addEventListener("input", function(){ kb[id] = $(id).value; save(); }); });
+  $("addGloss").addEventListener("click", function(){ kb.glossary.push({preferred:"",avoid:"",note:""}); save(); renderGloss(); });
+  $("guideFile").addEventListener("change", function(e){
+    var f = e.target.files[0]; if(!f) return;
+    if(f.size > 100000){ alert("Filen är för stor (max 100 kB)."); return; }
+    var r = new FileReader();
+    r.onload = function(){ kb.guidelines = String(r.result); $("guidelines").value = kb.guidelines; save(); };
+    r.readAsText(f);
+  });
+  $("resetKb").addEventListener("click", function(){
+    if(!confirm("Återställa allt till exempelmaterial?")) return;
+    kb = JSON.parse(JSON.stringify(DEFAULT_KB)); save(); fillKb();
+  });
+  $("exportKb").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(kb,null,2)], {type:"application/json"});
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "kunskapsbas.json"; document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  fillKb(); applyAdmin(); updCount();
+})();
+</script>
+</body>
+</html>
